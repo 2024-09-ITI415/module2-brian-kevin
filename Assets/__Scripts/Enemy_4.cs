@@ -8,21 +8,19 @@ using UnityEngine;
 [System.Serializable]
 public class Part
 {
-    // These three fields need to be defined in the Inspector pane
     public string name; // The name of this part
     public float health; // The amount of health this part has
     public string[] protectedBy; // The other parts that protect this
 
-    // These two fields are set automatically in Start().
-    // Caching like this makes it faster and easier to find these later
-    [HideInInspector] // Makes field on the next line not appear in the Inspector
+    // These two fields are set automatically in Start()
+    [HideInInspector]
     public GameObject go; // The GameObject of this part
     [HideInInspector]
     public Material mat; // The Material to show damage
 }
 
-public class Enemy_4 : Enemy {
-
+public class Enemy_4 : Enemy
+{
     [Header("Set in Inspector: Enemy_4")]
     public Part[] parts; // The array of ship Parts
 
@@ -33,7 +31,6 @@ public class Enemy_4 : Enemy {
     private void Start()
     {
         // There is already an initial position chosen by Main.SpawnEnemy()
-        // so add it to points as the initial p0 & p1
         p0 = p1 = pos;
 
         InitMovement();
@@ -48,13 +45,16 @@ public class Enemy_4 : Enemy {
                 prt.go = t.gameObject;
                 prt.mat = prt.go.GetComponent<Renderer>().material;
             }
+            else
+            {
+                Debug.LogError("Part named " + prt.name + " not found in children of " + gameObject.name);
+            }
         }
     }
 
     void InitMovement()
     {
         p0 = p1; // Set p0 to the old p1
-        // Assign a new on-screen location to p1
         float widMinRad = bndCheck.camWidth - bndCheck.radius;
         float hgtMinRad = bndCheck.camHeight - bndCheck.radius;
         p1.x = Random.Range(-widMinRad, widMinRad);
@@ -66,7 +66,6 @@ public class Enemy_4 : Enemy {
 
     public override void Move()
     {
-        // This completely overrides Enemy.Move() with a linear interpolation
         float u = (Time.time - timeStart) / duration;
 
         if (u >= 1)
@@ -76,54 +75,52 @@ public class Enemy_4 : Enemy {
         }
 
         u = 1 - Mathf.Pow(1 - u, 2); // Apply Ease Out easing to u
-        pos = ((1 - u) * p0) + (u * p1);// Simple linear interpolation
+        pos = ((1 - u) * p0) + (u * p1); // Simple linear interpolation
     }
 
-    // These two functions find a Part in parts based on name or GameObject
     Part FindPart(string n)
     {
         foreach (Part prt in parts)
         {
-            if(prt.name == n)
+            if (prt.name == n)
             {
-                return (prt);
+                return prt;
             }
         }
-        return (null);
-    }
-    Part FindPart(GameObject go)
-    {
-        foreach(Part prt in parts)
-        {
-            if(prt.go == go)
-            {
-                return (prt);
-            }
-        }
-        return (null);
+        return null;
     }
 
-    // These functions return true if the Part has been destroyed
+    Part FindPart(GameObject go)
+    {
+        foreach (Part prt in parts)
+        {
+            if (prt.go == go)
+            {
+                return prt;
+            }
+        }
+        return null;
+    }
+
     bool Destroyed(GameObject go)
     {
-        return (Destroyed(FindPart(go)));
+        return Destroyed(FindPart(go));
     }
+
     bool Destroyed(string n)
     {
-        return (Destroyed(FindPart(n)));
+        return Destroyed(FindPart(n));
     }
+
     bool Destroyed(Part prt)
     {
-        if (prt == null) // If no real ph was passed in
+        if (prt == null) // If no real part was passed in
         {
-            return (true); // Return true (meaning yes, it was destroyed)
+            return true; // Return true (meaning yes, it was destroyed)
         }
-        // Returns the result of the comparison: prt.health <= 0
-        // If prt.health is 0 or less, returns true (yes, it was destroyed)
         return (prt.health <= 0);
     }
 
-    // This changes the color of just one Part to red instead of the whole ship.
     void ShowLocalizedDamage(Material m)
     {
         m.color = Color.red;
@@ -131,7 +128,6 @@ public class Enemy_4 : Enemy {
         showingDamage = true;
     }
 
-    // This will override the OnCollisionEnter that is part of Enemy.cs.
     private void OnCollisionEnter(Collision coll)
     {
         GameObject other = coll.gameObject;
@@ -139,30 +135,46 @@ public class Enemy_4 : Enemy {
         {
             case "ProjectileHero":
                 Projectile p = other.GetComponent<Projectile>();
-                // IF this Enemy is off screen, don't damage it.
+
+                // Check if Projectile is null
+                if (p == null)
+                {
+                    Debug.LogError("ProjectileHero collided but has no Projectile component.");
+                    Destroy(other);
+                    return;
+                }
+
+                // If this Enemy is off screen, don't damage it.
                 if (!bndCheck.isOnScreen)
                 {
                     Destroy(other);
-                    break;
+                    return;
                 }
 
                 // Hurt this Enemy
                 GameObject goHit = coll.contacts[0].thisCollider.gameObject;
                 Part prtHit = FindPart(goHit);
-                if(prtHit == null) // If prtHit wasn't found...
+
+                // If prtHit is null, try the otherCollider
+                if (prtHit == null)
                 {
                     goHit = coll.contacts[0].otherCollider.gameObject;
                     prtHit = FindPart(goHit);
+                    if (prtHit == null)
+                    {
+                        Debug.LogError("Part not found for the collided GameObject: " + goHit.name);
+                        Destroy(other);
+                        return;
+                    }
                 }
+
                 // Check whether this part is still protected
                 if (prtHit.protectedBy != null)
                 {
-                    foreach(string s in prtHit.protectedBy)
+                    foreach (string s in prtHit.protectedBy)
                     {
-                        // If one of the protecting parts hasn't been destroyed...
-                        if (!Destroyed(s))
+                        if (!Destroyed(s)) // If one of the protecting parts hasn't been destroyed...
                         {
-                            // ...then don't damage this part yet
                             Destroy(other); // Destroy the ProjectileHero
                             return; // return before damaging Enemy_4
                         }
@@ -170,32 +182,42 @@ public class Enemy_4 : Enemy {
                 }
 
                 // It's not protected, so make it take damage
-                // Get the damage amount from the Projectile.type and Main.W_DEFS
-                prtHit.health -= Main.GetWeaponDefinition(p.type).damageOnHit;
-                // Show damage on the part
-                ShowLocalizedDamage(prtHit.mat);
-                if(prtHit.health <= 0)
+                WeaponDefinition def = Main.GetWeaponDefinition(p.type);
+
+                // Ensure that WeaponDefinition is not null
+                if (def == null)
                 {
-                    // Instead of destroying this enemy, disable the damaged part
+                    Debug.LogError("WeaponDefinition not found for Projectile type: " + p.type);
+                    Destroy(other);
+                    return;
+                }
+
+                // Apply damage
+                prtHit.health -= def.damageOnHit;
+                ShowLocalizedDamage(prtHit.mat);
+
+                if (prtHit.health <= 0)
+                {
                     prtHit.go.SetActive(false);
                 }
-                // Check to see if the whole ship is destroyed
-                bool allDestroyed = true; // Assume it is destroyed
+
+                // Check if all parts are destroyed
+                bool allDestroyed = true;
                 foreach (Part prt in parts)
                 {
-                    if (!Destroyed(prt)) // If a part still exists...
+                    if (!Destroyed(prt))
                     {
-                        allDestroyed = false; // ...change allDestroyed to false
-                        break; // & break out of the foreach loop
+                        allDestroyed = false;
+                        break;
                     }
                 }
-                if (allDestroyed) // If it IS completely destroyed...
+
+                if (allDestroyed)
                 {
-                    // ...tell the Main singleton that this ship was destroyed
                     Main.S.ShipDestroyed(this);
-                    // Destroy this Enemy
                     Destroy(this.gameObject);
                 }
+
                 Destroy(other); // Destroy the ProjectileHero
                 break;
         }
